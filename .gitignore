@@ -1,0 +1,17 @@
+target/
+highscore.txt
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# IDE files
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.factorypath
+.recommenders/
+.metadata/
