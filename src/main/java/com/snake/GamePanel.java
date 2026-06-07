@@ -35,6 +35,8 @@ public class GamePanel extends JPanel implements ActionListener {
 
     private final int[] x = new int[GAME_UNITS];
     private final int[] y = new int[GAME_UNITS];
+    private final int[] prevX = new int[GAME_UNITS];
+    private final int[] prevY = new int[GAME_UNITS];
     private int bodyParts;
     private int score;
     private int highScore;
@@ -93,6 +95,8 @@ public class GamePanel extends JPanel implements ActionListener {
         for (int i = 0; i < bodyParts; i++) {
             x[i] = (startGridX - i) * UNIT_SIZE;
             y[i] = startGridY * UNIT_SIZE;
+            prevX[i] = x[i];
+            prevY[i] = y[i];
         }
         
         particles.clear();
@@ -184,7 +188,19 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     private void drawSnake(Graphics2D g2d) {
+        // Calculate interpolation factor t [0.0, 1.0]
+        double t = 1.0;
+        if (state == GameState.PLAYING && running) {
+            t = (double) (snakeMoveDelay - moveCooldown) / snakeMoveDelay;
+            if (t > 1.0) t = 1.0;
+            if (t < 0.0) t = 0.0;
+        }
+
         for (int i = 0; i < bodyParts; i++) {
+            // Interpolated coordinates
+            int currentX = (int) Math.round(prevX[i] + t * (x[i] - prevX[i]));
+            int currentY = (int) Math.round(prevY[i] + t * (y[i] - prevY[i]));
+
             // Taper the snake body towards the tail
             float factor = (float) i / (bodyParts > 1 ? bodyParts - 1 : 1);
             int segmentSize = UNIT_SIZE - (int) (factor * 7); // size from 25 down to 18
@@ -199,7 +215,7 @@ public class GamePanel extends JPanel implements ActionListener {
             if (i == 0) {
                 // Draw Head with slight corner rounding
                 g2d.setColor(new Color(46, 204, 113));
-                g2d.fillRoundRect(x[i], y[i], UNIT_SIZE, UNIT_SIZE, 12, 12);
+                g2d.fillRoundRect(currentX, currentY, UNIT_SIZE, UNIT_SIZE, 12, 12);
                 
                 // Draw Character Eyes depending on direction
                 g2d.setColor(Color.WHITE);
@@ -210,26 +226,26 @@ public class GamePanel extends JPanel implements ActionListener {
                 
                 switch (direction) {
                     case 'U':
-                        eye1X = x[0] + 4;               eye1Y = y[0] + 4;
-                        eye2X = x[0] + UNIT_SIZE - 10;  eye2Y = y[0] + 4;
+                        eye1X = currentX + 4;               eye1Y = currentY + 4;
+                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + 4;
                         pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
                         pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
                         break;
                     case 'D':
-                        eye1X = x[0] + 4;               eye1Y = y[0] + UNIT_SIZE - 10;
-                        eye2X = x[0] + UNIT_SIZE - 10;  eye2Y = y[0] + UNIT_SIZE - 10;
+                        eye1X = currentX + 4;               eye1Y = currentY + UNIT_SIZE - 10;
+                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
                         pupil1X = eye1X + 1;            pupil1Y = eye1Y + 3;
                         pupil2X = eye2X + 1;            pupil2Y = eye2Y + 3;
                         break;
                     case 'L':
-                        eye1X = x[0] + 4;               eye1Y = y[0] + 4;
-                        eye2X = x[0] + 4;               eye2Y = y[0] + UNIT_SIZE - 10;
+                        eye1X = currentX + 4;               eye1Y = currentY + 4;
+                        eye2X = currentX + 4;               eye2Y = currentY + UNIT_SIZE - 10;
                         pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
                         pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
                         break;
                     case 'R':
-                        eye1X = x[0] + UNIT_SIZE - 10;  eye1Y = y[0] + 4;
-                        eye2X = x[0] + UNIT_SIZE - 10;  eye2Y = y[0] + UNIT_SIZE - 10;
+                        eye1X = currentX + UNIT_SIZE - 10;  eye1Y = currentY + 4;
+                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
                         pupil1X = eye1X + 3;            pupil1Y = eye1Y + 1;
                         pupil2X = eye2X + 3;            pupil2Y = eye2Y + 1;
                         break;
@@ -242,7 +258,7 @@ public class GamePanel extends JPanel implements ActionListener {
             } else {
                 // Draw body segment
                 g2d.setColor(color);
-                g2d.fillRoundRect(x[i] + offset, y[i] + offset, segmentSize, segmentSize, 8, 8);
+                g2d.fillRoundRect(currentX + offset, currentY + offset, segmentSize, segmentSize, 8, 8);
             }
         }
     }
@@ -367,6 +383,12 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     private void move() {
+        // Save current positions as previous for interpolation
+        for (int i = 0; i < bodyParts; i++) {
+            prevX[i] = x[i];
+            prevY[i] = y[i];
+        }
+
         // Commit direction change
         direction = nextDirection;
         
@@ -396,6 +418,8 @@ public class GamePanel extends JPanel implements ActionListener {
     private void checkApple() {
         if (x[0] == appleX && y[0] == appleY) {
             bodyParts++;
+            prevX[bodyParts - 1] = x[bodyParts - 1];
+            prevY[bodyParts - 1] = y[bodyParts - 1];
             score += 100;
             
             // Check for new High Score
