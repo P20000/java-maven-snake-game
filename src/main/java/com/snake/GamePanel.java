@@ -69,6 +69,7 @@ public class GamePanel extends JPanel implements ActionListener {
     // Particle and Animation Systems
     private final List<Particle> particles = new ArrayList<>();
     private final List<FloatingText> floatingTexts = new ArrayList<>();
+    private final List<PathPoint> pathHistory = new ArrayList<>();
 
     public GamePanel() {
         random = new Random();
@@ -103,6 +104,10 @@ public class GamePanel extends JPanel implements ActionListener {
         
         particles.clear();
         floatingTexts.clear();
+        pathHistory.clear();
+        for (int i = 0; i < bodyParts; i++) {
+            pathHistory.add(new PathPoint(x[i] + UNIT_SIZE / 2.0, y[i] + UNIT_SIZE / 2.0));
+        }
         
         generateApple();
         
@@ -190,25 +195,12 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     private void drawSnake(Graphics2D g2d) {
-        // Calculate interpolation factor t [0.0, 1.0]
-        double t = 1.0;
-        if (state == GameState.PLAYING && running) {
-            t = (double) (snakeMoveDelay - moveCooldown) / snakeMoveDelay;
-            if (t > 1.0) t = 1.0;
-            if (t < 0.0) t = 0.0;
-        }
-
         Stroke oldStroke = g2d.getStroke();
 
         // 1. Draw connecting slime body segments (from tail to neck)
         for (int i = bodyParts - 1; i > 0; i--) {
-            // Interpolated coordinates for segment i (center)
-            int cx = (int) Math.round(prevX[i] + t * (x[i] - prevX[i])) + UNIT_SIZE / 2;
-            int cy = (int) Math.round(prevY[i] + t * (y[i] - prevY[i])) + UNIT_SIZE / 2;
-
-            // Interpolated coordinates for segment i-1 (center)
-            int px = (int) Math.round(prevX[i-1] + t * (x[i-1] - prevX[i-1])) + UNIT_SIZE / 2;
-            int py = (int) Math.round(prevY[i-1] + t * (y[i-1] - prevY[i-1])) + UNIT_SIZE / 2;
+            PathPoint pCurr = getPointAlongPath(i * UNIT_SIZE);
+            PathPoint pPrev = getPointAlongPath((i - 1) * UNIT_SIZE);
 
             // Taper the snake body towards the tail
             float factor = (float) i / (bodyParts > 1 ? bodyParts - 1 : 1);
@@ -222,13 +214,15 @@ public class GamePanel extends JPanel implements ActionListener {
 
             g2d.setColor(color);
             g2d.setStroke(new BasicStroke(segmentSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g2d.drawLine(cx, cy, px, py);
+            g2d.drawLine((int) Math.round(pCurr.x), (int) Math.round(pCurr.y), 
+                         (int) Math.round(pPrev.x), (int) Math.round(pPrev.y));
         }
 
         // 2. Draw the head on top
         if (bodyParts > 0) {
-            int currentX = (int) Math.round(prevX[0] + t * (x[0] - prevX[0]));
-            int currentY = (int) Math.round(prevY[0] + t * (y[0] - prevY[0]));
+            PathPoint pHead = getPointAlongPath(0);
+            int currentX = (int) Math.round(pHead.x - UNIT_SIZE / 2.0);
+            int currentY = (int) Math.round(pHead.y - UNIT_SIZE / 2.0);
 
             g2d.setColor(new Color(46, 204, 113)); // Bright neon green
             g2d.fillOval(currentX, currentY, UNIT_SIZE, UNIT_SIZE);
@@ -513,6 +507,31 @@ public class GamePanel extends JPanel implements ActionListener {
                 checkCollisions();
                 moveCooldown = snakeMoveDelay;
             }
+
+            // Record smooth head position to pathHistory for slime trail tracking
+            double t = (double) (snakeMoveDelay - moveCooldown) / snakeMoveDelay;
+            if (t > 1.0) t = 1.0;
+            if (t < 0.0) t = 0.0;
+            double hx = prevX[0] + t * (x[0] - prevX[0]) + UNIT_SIZE / 2.0;
+            double hy = prevY[0] + t * (y[0] - prevY[0]) + UNIT_SIZE / 2.0;
+            
+            pathHistory.add(0, new PathPoint(hx, hy));
+            
+            // Prune history to limit memory consumption
+            double totalDist = 0;
+            int keepCount = 1;
+            for (int i = 1; i < pathHistory.size(); i++) {
+                PathPoint p1 = pathHistory.get(i - 1);
+                PathPoint p2 = pathHistory.get(i);
+                totalDist += Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                keepCount++;
+                if (totalDist > bodyParts * UNIT_SIZE + 50) {
+                    break;
+                }
+            }
+            while (pathHistory.size() > keepCount) {
+                pathHistory.remove(pathHistory.size() - 1);
+            }
         }
         
         // Update particles and floating texts
@@ -681,6 +700,40 @@ public class GamePanel extends JPanel implements ActionListener {
             g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), (int) (alpha * 255)));
             g.setFont(new Font("SansSerif", Font.BOLD, 14));
             g.drawString(text, (int) x, (int) y);
+        }
+    }
+
+    private PathPoint getPointAlongPath(double targetDist) {
+        if (pathHistory.isEmpty()) {
+            return new PathPoint(0, 0);
+        }
+        if (targetDist <= 0) {
+            return pathHistory.get(0);
+        }
+        
+        double accumulated = 0;
+        for (int i = 1; i < pathHistory.size(); i++) {
+            PathPoint p1 = pathHistory.get(i - 1);
+            PathPoint p2 = pathHistory.get(i);
+            double d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            if (accumulated + d >= targetDist) {
+                // Interpolate between p1 and p2
+                double ratio = (targetDist - accumulated) / d;
+                double rx = p1.x + ratio * (p2.x - p1.x);
+                double ry = p1.y + ratio * (p2.y - p1.y);
+                return new PathPoint(rx, ry);
+            }
+            accumulated += d;
+        }
+        // If we run out of history, return the last point
+        return pathHistory.get(pathHistory.size() - 1);
+    }
+
+    private static class PathPoint {
+        double x, y;
+        PathPoint(double x, double y) {
+            this.x = x;
+            this.y = y;
         }
     }
 }
