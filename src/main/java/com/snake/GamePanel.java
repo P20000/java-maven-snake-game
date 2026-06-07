@@ -11,6 +11,8 @@ import java.awt.FontMetrics;
 import java.awt.RenderingHints;
 import java.awt.AlphaComposite;
 import java.awt.Toolkit;
+import java.awt.Stroke;
+import java.awt.BasicStroke;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
@@ -196,71 +198,82 @@ public class GamePanel extends JPanel implements ActionListener {
             if (t < 0.0) t = 0.0;
         }
 
-        for (int i = 0; i < bodyParts; i++) {
-            // Interpolated coordinates
-            int currentX = (int) Math.round(prevX[i] + t * (x[i] - prevX[i]));
-            int currentY = (int) Math.round(prevY[i] + t * (y[i] - prevY[i]));
+        Stroke oldStroke = g2d.getStroke();
+
+        // 1. Draw connecting slime body segments (from tail to neck)
+        for (int i = bodyParts - 1; i > 0; i--) {
+            // Interpolated coordinates for segment i (center)
+            int cx = (int) Math.round(prevX[i] + t * (x[i] - prevX[i])) + UNIT_SIZE / 2;
+            int cy = (int) Math.round(prevY[i] + t * (y[i] - prevY[i])) + UNIT_SIZE / 2;
+
+            // Interpolated coordinates for segment i-1 (center)
+            int px = (int) Math.round(prevX[i-1] + t * (x[i-1] - prevX[i-1])) + UNIT_SIZE / 2;
+            int py = (int) Math.round(prevY[i-1] + t * (y[i-1] - prevY[i-1])) + UNIT_SIZE / 2;
 
             // Taper the snake body towards the tail
             float factor = (float) i / (bodyParts > 1 ? bodyParts - 1 : 1);
             int segmentSize = UNIT_SIZE - (int) (factor * 7); // size from 25 down to 18
-            int offset = (UNIT_SIZE - segmentSize) / 2;
             
             // Neon Green to Neon Blue-Teal Gradient
             int r = (int) (46 + factor * (52 - 46));
             int gCol = (int) (204 + factor * (152 - 204));
             int b = (int) (113 + factor * (219 - 113));
             Color color = new Color(r, gCol, b);
-            
-            if (i == 0) {
-                // Draw Head with slight corner rounding
-                g2d.setColor(new Color(46, 204, 113));
-                g2d.fillRoundRect(currentX, currentY, UNIT_SIZE, UNIT_SIZE, 12, 12);
-                
-                // Draw Character Eyes depending on direction
-                g2d.setColor(Color.WHITE);
-                int eyeSize = 6;
-                int pupilSize = 3;
-                int eye1X = 0, eye1Y = 0, eye2X = 0, eye2Y = 0;
-                int pupil1X = 0, pupil1Y = 0, pupil2X = 0, pupil2Y = 0;
-                
-                switch (direction) {
-                    case 'U':
-                        eye1X = currentX + 4;               eye1Y = currentY + 4;
-                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + 4;
-                        pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
-                        pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
-                        break;
-                    case 'D':
-                        eye1X = currentX + 4;               eye1Y = currentY + UNIT_SIZE - 10;
-                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
-                        pupil1X = eye1X + 1;            pupil1Y = eye1Y + 3;
-                        pupil2X = eye2X + 1;            pupil2Y = eye2Y + 3;
-                        break;
-                    case 'L':
-                        eye1X = currentX + 4;               eye1Y = currentY + 4;
-                        eye2X = currentX + 4;               eye2Y = currentY + UNIT_SIZE - 10;
-                        pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
-                        pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
-                        break;
-                    case 'R':
-                        eye1X = currentX + UNIT_SIZE - 10;  eye1Y = currentY + 4;
-                        eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
-                        pupil1X = eye1X + 3;            pupil1Y = eye1Y + 1;
-                        pupil2X = eye2X + 3;            pupil2Y = eye2Y + 1;
-                        break;
-                }
-                g2d.fillOval(eye1X, eye1Y, eyeSize, eyeSize);
-                g2d.fillOval(eye2X, eye2Y, eyeSize, eyeSize);
-                g2d.setColor(Color.BLACK);
-                g2d.fillOval(pupil1X, pupil1Y, pupilSize, pupilSize);
-                g2d.fillOval(pupil2X, pupil2Y, pupilSize, pupilSize);
-            } else {
-                // Draw body segment
-                g2d.setColor(color);
-                g2d.fillRoundRect(currentX + offset, currentY + offset, segmentSize, segmentSize, 8, 8);
-            }
+
+            g2d.setColor(color);
+            g2d.setStroke(new BasicStroke(segmentSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2d.drawLine(cx, cy, px, py);
         }
+
+        // 2. Draw the head on top
+        if (bodyParts > 0) {
+            int currentX = (int) Math.round(prevX[0] + t * (x[0] - prevX[0]));
+            int currentY = (int) Math.round(prevY[0] + t * (y[0] - prevY[0]));
+
+            g2d.setColor(new Color(46, 204, 113)); // Bright neon green
+            g2d.fillOval(currentX, currentY, UNIT_SIZE, UNIT_SIZE);
+
+            // Draw Character Eyes depending on direction
+            g2d.setColor(Color.WHITE);
+            int eyeSize = 6;
+            int pupilSize = 3;
+            int eye1X = 0, eye1Y = 0, eye2X = 0, eye2Y = 0;
+            int pupil1X = 0, pupil1Y = 0, pupil2X = 0, pupil2Y = 0;
+            
+            switch (direction) {
+                case 'U':
+                    eye1X = currentX + 4;               eye1Y = currentY + 4;
+                    eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + 4;
+                    pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
+                    pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
+                    break;
+                case 'D':
+                    eye1X = currentX + 4;               eye1Y = currentY + UNIT_SIZE - 10;
+                    eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
+                    pupil1X = eye1X + 1;            pupil1Y = eye1Y + 3;
+                    pupil2X = eye2X + 1;            pupil2Y = eye2Y + 3;
+                    break;
+                case 'L':
+                    eye1X = currentX + 4;               eye1Y = currentY + 4;
+                    eye2X = currentX + 4;               eye2Y = currentY + UNIT_SIZE - 10;
+                    pupil1X = eye1X + 1;            pupil1Y = eye1Y + 1;
+                    pupil2X = eye2X + 1;            pupil2Y = eye2Y + 1;
+                    break;
+                case 'R':
+                    eye1X = currentX + UNIT_SIZE - 10;  eye1Y = currentY + 4;
+                    eye2X = currentX + UNIT_SIZE - 10;  eye2Y = currentY + UNIT_SIZE - 10;
+                    pupil1X = eye1X + 3;            pupil1Y = eye1Y + 1;
+                    pupil2X = eye2X + 3;            pupil2Y = eye2Y + 1;
+                    break;
+            }
+            g2d.fillOval(eye1X, eye1Y, eyeSize, eyeSize);
+            g2d.fillOval(eye2X, eye2Y, eyeSize, eyeSize);
+            g2d.setColor(Color.BLACK);
+            g2d.fillOval(pupil1X, pupil1Y, pupilSize, pupilSize);
+            g2d.fillOval(pupil2X, pupil2Y, pupilSize, pupilSize);
+        }
+
+        g2d.setStroke(oldStroke);
     }
 
     private void drawParticles(Graphics2D g2d) {
